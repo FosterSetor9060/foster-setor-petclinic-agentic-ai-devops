@@ -1,0 +1,18 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# OS
+.DS_Store
+*.swp
+
+# Java build output
+**/target/
+*.jar
+*.class
+
+# IDE
+.idea/
+*.iml

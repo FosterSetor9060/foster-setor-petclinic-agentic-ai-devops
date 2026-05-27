@@ -1,0 +1,238 @@
+# =============================================================================
+# OIDC IAM Role Setup (one-time, before first run)
+# =============================================================================
+#
+# 1. Create the GitHub OIDC provider in IAM (if not already present):
+#
+#    aws iam create-open-id-connect-provider \
+#      --url https://token.actions.githubusercontent.com \
+#      --client-id-list sts.amazonaws.com \
+#      --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+#
+# 2. Create a role named "github-actions-petclinic" with this trust policy:
+#
+#    {
+#      "Version": "2012-10-17",
+#      "Statement": [
+#        {
+#          "Effect": "Allow",
+#          "Principal": {
+#            "Federated": "arn:aws:iam::681901085979:oidc-provider/token.actions.githubusercontent.com"
+#          },
+#          "Action": "sts:AssumeRoleWithWebIdentity",
+#          "Condition": {
+#            "StringEquals": {
+#              "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+#            },
+#            "StringLike": {
+#              "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_REPO:ref:refs/heads/main"
+#            }
+#          }
+#        }
+#      ]
+#    }
+#
+# 3. Attach this inline permissions policy to the role:
+#
+#    {
+#      "Version": "2012-10-17",
+#      "Statement": [
+#        {
+#          "Sid": "ECRAuth",
+#          "Effect": "Allow",
+#          "Action": "ecr:GetAuthorizationToken",
+#          "Resource": "*"
+#        },
+#        {
+#          "Sid": "ECRPush",
+#          "Effect": "Allow",
+#          "Action": [
+#            "ecr:BatchCheckLayerAvailability",
+#            "ecr:CompleteLayerUpload",
+#            "ecr:InitiateLayerUpload",
+#            "ecr:PutImage",
+#            "ecr:UploadLayerPart",
+#            "ecr:BatchGetImage",
+#            "ecr:GetDownloadUrlForLayer"
+#          ],
+#          "Resource": "arn:aws:ecr:us-east-1:681901085979:repository/foster-petclinic/*"
+#        }
+#      ]
+#    }
+#
+# 4. Create ECR repositories (one per service):
+#
+#    for svc in config-server discovery-server api-gateway \
+#                customers-service vets-service visits-service \
+#                genai-service admin-server; do
+#      aws ecr create-repository \
+#        --repository-name foster-petclinic/${svc} \
+#        --region us-east-1
+#    done
+#
+# =============================================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION:     us-east-1
+  ECR_REGISTRY:   681901085979.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPO_PREFIX: foster-petclinic
+  IAM_ROLE:       arn:aws:iam::681901085979:role/github-actions-petclinic
+
+# ── Job 1: build each service image and push to ECR ──────────────────────────
+jobs:
+  build-and-push:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # required for OIDC token exchange
+      contents: read
+
+    strategy:
+      fail-fast: false  # let other services finish even if one fails
+      matrix:
+        include:
+          - service: config-server
+            port: 8888
+          - service: discovery-server
+            port: 8761
+          - service: api-gateway
+            port: 8081
+          - service: customers-service
+            port: 8081
+          - service: vets-service
+            port: 8081
+          - service: visits-service
+            port: 9090
+          - service: genai-service
+            port: 8081
+          - service: admin-server
+            port: 9090
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Build the fat JAR ─────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      - name: Build JAR (skip tests — covered by maven-build.yml)
+        working-directory: spring-petclinic-microservices
+        run: |
+          ./mvnw package \
+            --pl spring-petclinic-${{ matrix.service }} \
+            --also-make \
+            -DskipTests \
+            -q
+
+      # Resolve the artifact name from the JAR produced in target/.
+      # The Dockerfile COPY instruction expects the bare name without .jar.
+      - name: Resolve artifact name
+        working-directory: spring-petclinic-microservices
+        run: |
+          JAR=$(ls spring-petclinic-${{ matrix.service }}/target/spring-petclinic-${{ matrix.service }}-*.jar \
+                | grep -v '\-sources\.' | grep -v '\-javadoc\.' | head -1)
+          echo "ARTIFACT_NAME=$(basename "$JAR" .jar)" >> "$GITHUB_ENV"
+
+      # ── Build multi-platform image and push ───────────────────────────────
+      # QEMU + Buildx are required to cross-compile linux/arm64 on amd64 runners.
+      # We bypass the Maven buildDocker profile (which uses --load and cannot push
+      # multi-platform images) and drive docker buildx directly.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.IAM_ROLE }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          # Context is target/ — the Dockerfile COPYs the JAR from the context root.
+          context: spring-petclinic-microservices/spring-petclinic-${{ matrix.service }}/target
+          file:    spring-petclinic-microservices/docker/Dockerfile
+          platforms: linux/arm64
+          push: true
+          build-args: |
+            ARTIFACT_NAME=${{ env.ARTIFACT_NAME }}
+            EXPOSED_PORT=${{ matrix.port }}
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO_PREFIX }}/${{ matrix.service }}:latest
+          # Reuse layer cache across runs, scoped per service to avoid cross-contamination.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ── Job 2: update Helm values with the new image tags ──────────────────────
+  # Runs only after every matrix job in build-and-push succeeds.
+  update-helm:
+    name: Update Helm values
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    permissions:
+      id-token: write
+      contents: write   # required to push the Helm values commit
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use the built-in token so the push triggers no extra workflow run.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # mikefarah/yq (Go implementation) handles YAML paths with hyphens cleanly.
+      - name: Install yq
+        run: sudo snap install yq
+
+      # Update .images["<service>"].tag in helm/petclinic/values.yaml.
+      # Adjust the yq key path if your chart uses a different structure
+      # (e.g. .configServer.image.tag).
+      - name: Patch image tags
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          VALUES=helm/petclinic/values.yaml
+          for SERVICE in \
+            config-server \
+            discovery-server \
+            api-gateway \
+            customers-service \
+            vets-service \
+            visits-service \
+            genai-service \
+            admin-server
+          do
+            yq e ".images[\"${SERVICE}\"].tag = \"${SHA}\"" -i "$VALUES"
+          done
+
+      - name: Commit and push updated Helm values
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/petclinic/values.yaml
+          # Exit cleanly if nothing changed (e.g. re-run on same SHA).
+          git diff --staged --quiet && echo "Helm values already up to date." && exit 0
+          git commit -m "ci: bump image tags to ${{ github.sha }}"
+          git push

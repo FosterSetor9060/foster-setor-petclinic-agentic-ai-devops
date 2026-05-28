@@ -35,8 +35,11 @@ eso:
 # ──────────────────────────────────────────────────────────────────────────────
 # AWS ALB Ingress (exposes api-gateway publicly)
 # ──────────────────────────────────────────────────────────────────────────────
+externalSecrets:
+  enabled: false
+
 ingress:
-  enabled: true
+  enabled: false
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip

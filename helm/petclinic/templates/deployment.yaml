@@ -61,6 +61,16 @@ spec:
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: {{ $svc.springProfiles | quote }}
+            {{- if ne $name "config-server" }}
+            - name: SPRING_CONFIG_IMPORT
+              value: "optional:configserver:http://petclinic-config-server:8888"
+            - name: SPRING_CLOUD_CONFIG_URI
+              value: "http://petclinic-config-server:8888"
+            {{- end }}
+            {{- if eq $name "discovery-server" }}
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: "http://petclinic-discovery-server:8761/eureka/"
+            {{- end }}
             {{- if $svc.needsDb }}
             - name: SPRING_DATASOURCE_URL
               valueFrom:

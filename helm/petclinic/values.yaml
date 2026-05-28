@@ -1,0 +1,153 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# ECR image registry
+# ──────────────────────────────────────────────────────────────────────────────
+registry: 681901085979.dkr.ecr.us-east-1.amazonaws.com
+imagePrefix: foster-petclinic
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Optional — leave empty when node IAM role / IRSA grants ECR pull access
+imagePullSecrets: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Default resource profile (applied to every service; override per-service below)
+# ──────────────────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# External Secrets Operator
+# Assumes a ClusterSecretStore already exists (created by the ESO Helm chart
+# with an IRSA-backed IAM role that can read the two Secrets Manager secrets).
+# ──────────────────────────────────────────────────────────────────────────────
+eso:
+  clusterSecretStore: aws-secrets-store
+  rdsSecretName: foster-petclinic/rds-credentials
+  openaiSecretName: foster-petclinic/openai-api-key
+  refreshInterval: 1h
+
+# ──────────────────────────────────────────────────────────────────────────────
+# AWS ALB Ingress (exposes api-gateway publicly)
+# ──────────────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # Uncomment and set after ACM cert is issued:
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:681901085979:certificate/YOUR_CERT_ID
+  host: petclinic.example.com
+  tls: []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-service configuration
+#
+# waitFor:    list of service names (keys in this map) whose /actuator/health
+#             must return 200 before this service container starts.
+# needsDb:    inject RDS credentials from the ESO-synced Secret.
+# needsOpenAI: inject OPENAI_API_KEY from the ESO-synced Secret.
+# ──────────────────────────────────────────────────────────────────────────────
+services:
+
+  config-server:
+    tag: latest
+    replicas: 1
+    port: 8888
+    springProfiles: "docker"
+    waitFor: []
+    needsDb: false
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 90
+    readinessInitialDelaySeconds: 60
+
+  discovery-server:
+    tag: latest
+    replicas: 1
+    port: 8761
+    springProfiles: "docker"
+    waitFor:
+      - config-server
+    needsDb: false
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 45
+
+  api-gateway:
+    tag: latest
+    replicas: 2
+    port: 8080
+    springProfiles: "docker"
+    waitFor:
+      - discovery-server
+    needsDb: false
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30
+
+  customers-service:
+    tag: latest
+    replicas: 2
+    port: 8081
+    springProfiles: "docker,mysql"
+    waitFor:
+      - discovery-server
+    needsDb: true
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30
+
+  vets-service:
+    tag: latest
+    replicas: 2
+    port: 8082
+    springProfiles: "docker,mysql"
+    waitFor:
+      - discovery-server
+    needsDb: true
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30
+
+  visits-service:
+    tag: latest
+    replicas: 2
+    port: 8083
+    springProfiles: "docker,mysql"
+    waitFor:
+      - discovery-server
+    needsDb: true
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30
+
+  genai-service:
+    tag: latest
+    replicas: 1
+    port: 8084
+    springProfiles: "docker"
+    waitFor:
+      - discovery-server
+    needsDb: false
+    needsOpenAI: true
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30
+
+  admin-server:
+    tag: latest
+    replicas: 1
+    port: 9090
+    springProfiles: "docker"
+    waitFor:
+      - discovery-server
+    needsDb: false
+    needsOpenAI: false
+    livenessInitialDelaySeconds: 60
+    readinessInitialDelaySeconds: 30

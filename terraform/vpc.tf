@@ -123,7 +123,7 @@ resource "aws_security_group" "eks_nodes" {
 # RDS — only accepts MySQL connections originating from the EKS node SG
 resource "aws_security_group" "rds" {
   name        = "foster-petclinic-rds-sg"
-  description = "RDS MySQL — inbound 3306 from EKS nodes only"
+  description = "RDS MySQL - inbound 3306 from EKS nodes only"
   vpc_id      = aws_vpc.main.id
 
   ingress {

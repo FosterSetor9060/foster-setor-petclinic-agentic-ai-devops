@@ -1,0 +1,111 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "petclinic.fullname" $ }}-{{ $name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "petclinic.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      {{- include "petclinic.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "petclinic.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      {{- if $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml $.Values.imagePullSecrets | nindent 8 }}
+      {{- end }}
+      {{- if $svc.waitFor }}
+      initContainers:
+        {{- range $dep := $svc.waitFor }}
+        {{- $depSvc := index $.Values.services $dep }}
+        - name: wait-for-{{ $dep }}
+          image: curlimages/curl:8.5.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for {{ $dep }} at http://{{ include "petclinic.fullname" $ }}-{{ $dep }}:{{ $depSvc.port }}/actuator/health ..."
+              until curl -sf http://{{ include "petclinic.fullname" $ }}-{{ $dep }}:{{ $depSvc.port }}/actuator/health; do
+                echo "{{ $dep }} not ready — retrying in 5s"
+                sleep 5
+              done
+              echo "{{ $dep }} is healthy."
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "50m"
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ $.Values.registry }}/{{ $.Values.imagePrefix }}/{{ $name }}:{{ $svc.tag }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: {{ $svc.springProfiles | quote }}
+            {{- if $svc.needsDb }}
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "petclinic.fullname" $ }}-rds-credentials
+                  key: jdbc_url
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "petclinic.fullname" $ }}-rds-credentials
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "petclinic.fullname" $ }}-rds-credentials
+                  key: password
+            {{- end }}
+            {{- if $svc.needsOpenAI }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "petclinic.fullname" $ }}-openai-key
+                  key: OPENAI_API_KEY
+            {{- end }}
+          resources:
+            {{- if $svc.resources }}
+            {{- toYaml $svc.resources | nindent 12 }}
+            {{- else }}
+            {{- toYaml $.Values.resources | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: {{ $svc.livenessInitialDelaySeconds }}
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: {{ $svc.readinessInitialDelaySeconds }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 30
+{{- end }}

@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: petclinic-project
+  namespace: argocd
+spec:
+  description: Spring PetClinic microservices project
+
+  sourceRepos:
+    - https://github.com/FosterSetor9060/foster-setor-petclinic-agentic-ai-devops
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: petclinic
+
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

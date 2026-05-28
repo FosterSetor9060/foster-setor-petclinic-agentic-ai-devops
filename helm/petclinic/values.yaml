@@ -85,7 +85,7 @@ services:
 
   api-gateway:
     tag: latest
-    replicas: 2
+    replicas: 1
     port: 8080
     springProfiles: "docker"
     waitFor:
@@ -97,7 +97,7 @@ services:
 
   customers-service:
     tag: latest
-    replicas: 2
+    replicas: 1
     port: 8081
     springProfiles: "docker,mysql"
     waitFor:
@@ -109,7 +109,7 @@ services:
 
   vets-service:
     tag: latest
-    replicas: 2
+    replicas: 1
     port: 8082
     springProfiles: "docker,mysql"
     waitFor:
@@ -121,7 +121,7 @@ services:
 
   visits-service:
     tag: latest
-    replicas: 2
+    replicas: 1
     port: 8083
     springProfiles: "docker,mysql"
     waitFor:

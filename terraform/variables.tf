@@ -41,9 +41,9 @@ variable "eks_version" {
 }
 
 variable "node_instance_type" {
-  description = "EC2 instance type for EKS worker nodes — must be ARM64 (Graviton)"
+  description = "EC2 instance type for EKS worker nodes"
   type        = string
-  default     = "t4g.small"
+  default     = "t3.medium"
 }
 
 variable "node_min_size" {

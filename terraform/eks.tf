@@ -172,8 +172,8 @@ resource "aws_eks_node_group" "main" {
   node_role_arn   = aws_iam_role.eks_nodes.arn
   subnet_ids      = aws_subnet.public[*].id
 
-  # AL2_ARM_64 — Amazon Linux 2 for Graviton (t4g) instances
-  ami_type       = "AL2_ARM_64"
+  # AL2_x86_64 — Amazon Linux 2 for x86_64 (t3) instances
+  ami_type       = "AL2_x86_64"
   instance_types = [var.node_instance_type]
   capacity_type  = "ON_DEMAND"
 

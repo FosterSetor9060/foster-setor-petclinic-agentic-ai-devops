@@ -66,12 +66,18 @@ spec:
               value: "optional:configserver:http://petclinic-config-server:8888"
             - name: SPRING_CLOUD_CONFIG_URI
               value: "http://petclinic-config-server:8888"
+            - name: SPRING_APPLICATION_JSON
+              value: '{"spring":{"cloud":{"config":{"uri":"http://petclinic-config-server:8888"}}}}'
             {{- end }}
             {{- if eq $name "discovery-server" }}
             - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
               value: "http://petclinic-discovery-server:8761/eureka/"
             {{- end }}
             {{- if $svc.needsDb }}
+            - name: CONFIG_SERVER_URL
+              value: "http://{{ include "petclinic.fullname" $ }}-config-server:8888"
+            - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+              value: "http://{{ include "petclinic.fullname" $ }}-discovery-server:8761/eureka/"
             - name: SPRING_DATASOURCE_URL
               valueFrom:
                 secretKeyRef:

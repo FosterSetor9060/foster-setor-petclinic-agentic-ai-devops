@@ -116,8 +116,8 @@ services:
       - discovery-server
     needsDb: true
     needsOpenAI: false
-    livenessInitialDelaySeconds: 60
-    readinessInitialDelaySeconds: 30
+    livenessInitialDelaySeconds: 180
+    readinessInitialDelaySeconds: 150
 
   visits-service:
     tag: latest
@@ -128,8 +128,8 @@ services:
       - discovery-server
     needsDb: true
     needsOpenAI: false
-    livenessInitialDelaySeconds: 60
-    readinessInitialDelaySeconds: 30
+    livenessInitialDelaySeconds: 180
+    readinessInitialDelaySeconds: 150
 
   genai-service:
     tag: latest

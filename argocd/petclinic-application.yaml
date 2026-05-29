@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: petclinic
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/FosterSetor9060/foster-setor-petclinic-agentic-ai-devops.git
+    targetRevision: HEAD
+    path: helm/petclinic
+    helm:
+      valueFiles:
+        - values.yaml
+      parameters:
+        - name: externalSecrets.enabled
+          value: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: petclinic
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

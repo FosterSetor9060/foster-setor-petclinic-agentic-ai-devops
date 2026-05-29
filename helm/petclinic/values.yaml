@@ -110,7 +110,7 @@ services:
   vets-service:
     tag: latest
     replicas: 1
-    port: 8082
+    port: 8083
     springProfiles: "docker,mysql"
     waitFor:
       - discovery-server
@@ -122,7 +122,7 @@ services:
   visits-service:
     tag: latest
     replicas: 1
-    port: 8083
+    port: 8082
     springProfiles: "docker,mysql"
     waitFor:
       - discovery-server

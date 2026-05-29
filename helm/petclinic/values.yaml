@@ -87,6 +87,7 @@ services:
     tag: latest
     replicas: 1
     port: 8080
+    serviceType: LoadBalancer
     springProfiles: "docker"
     waitFor:
       - discovery-server

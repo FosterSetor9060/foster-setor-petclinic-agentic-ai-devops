@@ -9,7 +9,7 @@ metadata:
     {{- include "petclinic.labels" $ | nindent 4 }}
     app.kubernetes.io/component: {{ $name }}
 spec:
-  type: ClusterIP
+  type: {{ default "ClusterIP" $svc.serviceType }}
   ports:
     - name: http
       port: {{ $svc.port }}
